@@ -61,19 +61,19 @@ fuzz_nvs: fuzz_nvs_config.c $(STUBS_SRC)
 
 # --- Run targets ---
 run_serialize: fuzz_serialize
-	@mkdir -p corpus
-	./fuzz_serialize corpus/ -max_total_time=$(FUZZ_DURATION) -max_len=2048 -jobs=$(FUZZ_JOBS)
+	@mkdir -p corpus_serialize
+	./fuzz_serialize corpus_serialize/ -max_total_time=$(FUZZ_DURATION) -max_len=2048 -jobs=$(FUZZ_JOBS)
 
 run_edge: fuzz_edge
-	@mkdir -p corpus
-	./fuzz_edge corpus/ -max_total_time=$(FUZZ_DURATION) -max_len=4096 -jobs=$(FUZZ_JOBS)
+	@mkdir -p corpus_edge
+	./fuzz_edge corpus_edge/ -max_total_time=$(FUZZ_DURATION) -max_len=4096 -jobs=$(FUZZ_JOBS)
 
 run_nvs: fuzz_nvs
-	@mkdir -p corpus
-	./fuzz_nvs corpus/ -max_total_time=$(FUZZ_DURATION) -max_len=256 -jobs=$(FUZZ_JOBS)
+	@mkdir -p corpus_nvs
+	./fuzz_nvs corpus_nvs/ -max_total_time=$(FUZZ_DURATION) -max_len=256 -jobs=$(FUZZ_JOBS)
 
 run_all: run_serialize run_edge run_nvs
 
 clean:
 	rm -f fuzz_serialize fuzz_edge fuzz_nvs
-	rm -rf corpus/
+	rm -rf corpus_serialize/ corpus_edge/ corpus_nvs/

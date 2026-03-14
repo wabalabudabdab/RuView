@@ -8,7 +8,7 @@
 # Fault types:
 #   1. wifi_kill        — Pause/resume VM to simulate WiFi reconnect
 #   2. ring_flood       — Inject 1000 rapid mock frames (ring buffer stress)
-#   3. heap_pressure    — Write to heap metadata to simulate low memory
+#   3. heap_exhaust    — Write to heap metadata to simulate low memory
 #   4. timer_starvation — Pause VM for 500ms to starve FreeRTOS timers
 #   5. corrupt_frame    — Inject a CSI frame with bad magic bytes
 #   6. nvs_corrupt      — Write garbage to NVS flash region
@@ -37,7 +37,7 @@ followed by a recovery window and health check.
 Fault types:
   wifi_kill         Pause/resume VM to simulate WiFi reconnect
   ring_flood        Inject 1000 rapid mock frames (ring buffer stress)
-  heap_pressure     Write to heap metadata to simulate low memory
+  heap_exhaust     Write to heap metadata to simulate low memory
   timer_starvation  Pause VM for 500ms to starve FreeRTOS timers
   corrupt_frame     Inject a CSI frame with bad magic bytes
   nvs_corrupt       Write garbage to NVS flash region
@@ -84,7 +84,7 @@ UART_LOG="$LOG_DIR/qemu_uart.log"
 QEMU_PID=""
 
 # Fault definitions
-FAULTS=("wifi_kill" "ring_flood" "heap_pressure" "timer_starvation" "corrupt_frame" "nvs_corrupt")
+FAULTS=("wifi_kill" "ring_flood" "heap_exhaust" "timer_starvation" "corrupt_frame" "nvs_corrupt")
 declare -a FAULT_RESULTS=()
 
 # ──────────────────────────────────────────────────────────────────────
@@ -152,10 +152,10 @@ inject_ring_flood() {
         --fault ring_flood
 }
 
-inject_heap_pressure() {
-    # Use monitor to simulate memory pressure by writing to heap tracking
-    # regions. The firmware's heap checks should detect and handle this.
-    echo "  [inject] Simulating heap pressure via memory write..."
+inject_heap_exhaust() {
+    # Simulate memory pressure by pausing the VM to stress heap management.
+    # Actual heap memory writes require GDB stub.
+    echo "  [inject] Simulating heap pressure via VM pause..."
     python3 "$SCRIPT_DIR/inject_fault.py" \
         --socket "$MONITOR_SOCK" \
         --fault heap_exhaust
@@ -180,12 +180,13 @@ inject_corrupt_frame() {
 }
 
 inject_nvs_corrupt() {
-    # Write garbage to the NVS flash region (offset 0x9000).
+    # Write garbage to the NVS flash region (offset 0x9000) via direct file write.
     # The firmware should detect NVS corruption and fall back to defaults.
     echo "  [inject] Corrupting NVS flash region..."
     python3 "$SCRIPT_DIR/inject_fault.py" \
         --socket "$MONITOR_SOCK" \
-        --fault nvs_corrupt
+        --fault nvs_corrupt \
+        --flash "$FLASH_IMAGE"
 }
 
 # ──────────────────────────────────────────────────────────────────────
@@ -307,7 +308,7 @@ for fault in "${FAULTS[@]}"; do
     case "$fault" in
         wifi_kill)        inject_wifi_kill ;;
         ring_flood)       inject_ring_flood ;;
-        heap_pressure)    inject_heap_pressure ;;
+        heap_exhaust)     inject_heap_exhaust ;;
         timer_starvation) inject_timer_starvation ;;
         corrupt_frame)    inject_corrupt_frame ;;
         nvs_corrupt)      inject_nvs_corrupt ;;

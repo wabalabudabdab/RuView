@@ -97,9 +97,11 @@ trap cleanup EXIT INT TERM
 # ──────────────────────────────────────────────────────────────────────
 
 now_ms() {
-    # Millisecond timestamp (portable: uses date +%s%N on Linux, perl fallback)
-    if date +%s%N &>/dev/null; then
-        echo $(( $(date +%s%N) / 1000000 ))
+    # Millisecond timestamp (portable: Linux date +%s%N, macOS perl fallback)
+    local ns
+    ns=$(date +%s%N 2>/dev/null)
+    if [[ "$ns" =~ ^[0-9]+$ ]]; then
+        echo $(( ns / 1000000 ))
     else
         perl -MTime::HiRes=time -e 'printf "%d\n", time()*1000' 2>/dev/null || \
             echo $(( $(date +%s) * 1000 ))
@@ -284,15 +286,15 @@ for test_name in "${TESTS[@]}"; do
     # Restore to post_first_frame state
     restore_snapshot "post_first_frame"
 
-    # Clear the UART log for this test segment
-    > "$LOG_DIR/qemu_uart.log"
+    # Record current log length so we can extract only new lines
+    pre_lines=$(wc -l < "$LOG_DIR/qemu_uart.log" 2>/dev/null || echo 0)
 
     # Let execution continue for TIMEOUT_SEC seconds
     echo "[test] Running for ${TIMEOUT_SEC}s..."
     sleep "$TIMEOUT_SEC"
 
-    # Capture the log segment for this test
-    cp "$LOG_DIR/qemu_uart.log" "$test_log"
+    # Capture only the new log lines produced during this test
+    tail -n +$((pre_lines + 1)) "$LOG_DIR/qemu_uart.log" > "$test_log"
 
     t_end=$(now_ms)
     elapsed_ms=$((t_end - t_start))

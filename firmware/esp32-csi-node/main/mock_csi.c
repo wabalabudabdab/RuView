@@ -80,7 +80,7 @@ static const char *TAG = "mock_csi";
 
 /** Pi constant. */
 #ifndef M_PI
-#define M_PI 3.14159265358979323846f
+#define M_PI 3.14159265358979323846
 #endif
 
 /* ---- Channel sweep table ---- */
@@ -101,7 +101,7 @@ static const uint8_t s_bad_mac[6]  = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 /**
  * 32-bit Galois LFSR for deterministic pseudo-random noise.
  * Avoids stdlib rand() which may not be available on ESP32 bare-metal.
- * Taps: bits 32, 22, 2, 1 (maximal-length polynomial).
+ * Taps: bits 32, 31, 29, 1 (Galois LFSR polynomial 0xD0000001).
  */
 static uint32_t s_lfsr = 0xDEADBEEF;
 
@@ -110,7 +110,7 @@ static uint32_t lfsr_next(void)
     uint32_t lsb = s_lfsr & 1u;
     s_lfsr >>= 1;
     if (lsb) {
-        s_lfsr ^= 0xD0000001u;  /* x^32 + x^22 + x^2 + x^1 */
+        s_lfsr ^= 0xD0000001u;  /* x^32 + x^31 + x^29 + x^1 */
     }
     return s_lfsr;
 }
@@ -129,6 +129,12 @@ static float lfsr_float(void)
 
 static mock_state_t  s_state;
 static esp_timer_handle_t s_timer = NULL;
+
+/** Tracks whether the MAC filter has been set up in gen_mac_filter. */
+static bool s_mac_filter_initialized = false;
+
+/** Tracks whether the overflow burst has fired in gen_ring_overflow. */
+static bool s_overflow_burst_done = false;
 
 /* External NVS config (for MAC filter scenario). */
 extern nvs_config_t g_nvs_config;
@@ -157,9 +163,9 @@ static float channel_to_lambda(uint8_t channel)
 
 /* ---- Helper: elapsed ms since scenario start ---- */
 
-static uint32_t scenario_elapsed_ms(void)
+static int64_t scenario_elapsed_ms(void)
 {
-    uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
+    int64_t now = esp_timer_get_time() / 1000;
     return now - s_state.scenario_start_ms;
 }
 
@@ -277,7 +283,7 @@ static void gen_walking(uint8_t *iq_buf, uint8_t *channel, int8_t *rssi)
  */
 static void gen_fall(uint8_t *iq_buf, uint8_t *channel, int8_t *rssi)
 {
-    uint32_t elapsed = scenario_elapsed_ms();
+    int64_t elapsed = scenario_elapsed_ms();
     uint32_t duration = CONFIG_CSI_MOCK_SCENARIO_DURATION_MS;
 
     /* Fall occurs at 70% of scenario duration. */
@@ -403,7 +409,6 @@ static void gen_mac_filter(uint8_t *iq_buf, uint8_t *channel, int8_t *rssi,
                            bool *skip_inject)
 {
     /* Set up the filter MAC to match s_good_mac on first frame of this scenario. */
-    static bool s_mac_filter_initialized = false;
     if (!s_mac_filter_initialized) {
         memcpy(g_nvs_config.filter_mac, s_good_mac, 6);
         g_nvs_config.filter_mac_set = 1;
@@ -439,10 +444,10 @@ static void gen_ring_overflow(uint8_t *iq_buf, uint8_t *channel, int8_t *rssi,
     *channel = 6;
     *rssi = -50;
 
-    /* Only burst on the first timer tick of this scenario. */
-    uint32_t elapsed = scenario_elapsed_ms();
-    if (elapsed < MOCK_CSI_INTERVAL_MS + 10) {
+    /* Burst once on the first timer tick of this scenario. */
+    if (!s_overflow_burst_done) {
         *burst_count = OVERFLOW_BURST_COUNT;
+        s_overflow_burst_done = true;
     } else {
         *burst_count = 1;
     }
@@ -454,7 +459,7 @@ static void gen_ring_overflow(uint8_t *iq_buf, uint8_t *channel, int8_t *rssi,
  */
 static void gen_boundary_rssi(uint8_t *iq_buf, uint8_t *channel, int8_t *rssi)
 {
-    uint32_t elapsed = scenario_elapsed_ms();
+    int64_t elapsed = scenario_elapsed_ms();
     uint32_t duration = CONFIG_CSI_MOCK_SCENARIO_DURATION_MS;
 
     /* Linear sweep: -90 to -10 dBm. */
@@ -492,7 +497,7 @@ static void advance_scenario(void)
     }
 
     s_state.scenario = s_state.all_idx;
-    s_state.scenario_start_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    s_state.scenario_start_ms = esp_timer_get_time() / 1000;
 
     /* Reset per-scenario state. */
     s_state.person_x = 1.0f;
@@ -521,7 +526,7 @@ static void mock_timer_cb(void *arg)
     if (s_state.scenario == MOCK_SCENARIO_ALL ||
         (s_state.all_idx > 0 && s_state.all_idx < MOCK_SCENARIO_COUNT)) {
         /* We're running in sequential mode. */
-        uint32_t elapsed = scenario_elapsed_ms();
+        int64_t elapsed = scenario_elapsed_ms();
         if (elapsed >= CONFIG_CSI_MOCK_SCENARIO_DURATION_MS) {
             advance_scenario();
         }
@@ -619,8 +624,10 @@ esp_err_t mock_csi_init(uint8_t scenario)
     s_state.person_speed = WALK_SPEED_MS;
     s_state.person2_x = 4.0f;
     s_state.person2_speed = WALK_SPEED_MS * 0.6f;
-    s_state.scenario_start_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    s_state.scenario_start_ms = esp_timer_get_time() / 1000;
     s_all_done = false;
+    s_mac_filter_initialized = false;
+    s_overflow_burst_done = false;
 
     /* Reset LFSR to deterministic seed. */
     s_lfsr = 0xDEADBEEF;

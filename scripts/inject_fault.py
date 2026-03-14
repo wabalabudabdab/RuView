@@ -18,6 +18,8 @@ Usage:
 """
 
 import argparse
+import os
+import random
 import socket
 import sys
 import time
@@ -123,31 +125,24 @@ def fault_ring_flood(s: socket.socket) -> None:
     print(f"[ring_flood] Injected: {sent}/1000 rapid NMI triggers")
 
 
-def fault_heap_exhaust(s: socket.socket) -> None:
-    """Write to heap tracking metadata to simulate memory pressure.
+def fault_heap_exhaust(s: socket.socket, flash_path: str = None) -> None:
+    """Simulate memory pressure by pausing VM to trigger watchdog/heap checks.
 
-    ESP32-S3 DRAM starts at 0x3FC88000. We write a pattern to the
-    heap control block area to simulate low-memory conditions. The
-    firmware's heap_caps checks should detect the anomaly.
+    Actual heap memory writes require a GDB stub (-gdb tcp::1234).
+    This function probes the heap region and pauses the VM to stress
+    heap management as a realistic simulation.
     """
-    # ESP32-S3 internal DRAM heap region
     heap_base = 0x3FC88000
-    # Write a pattern that looks like an exhausted free-list
-    # (all zeros in the next-free pointer)
-    print(f"[heap_exhaust] Writing to heap metadata at 0x{heap_base:08X}...")
-    # Use QEMU monitor 'memsave' and 'pmemsave' aren't writable;
-    # use 'xp' to read and 'poke' (if available) or GDB memory write
-    # Fallback: use the monitor 'x' command to at least probe the region
+    print("[heap_exhaust] Probing heap region...")
     resp = send_cmd(s, f"xp /4xw 0x{heap_base:08x}")
-    print(f"[heap_exhaust] Current heap header: {resp.strip()}")
-
-    # Attempt to write garbage via 'write' monitor command (QEMU 8.x+)
-    # Format: write <addr> <size> <data>
-    garbage = "DEADBEEF" * 4  # 16 bytes of garbage
-    resp = send_cmd(s, f"pmemsave 0x{heap_base:08x} 16 /dev/null")
-    # Try direct memory write if supported
-    resp = send_cmd(s, f"x /1xw 0x{heap_base:08x}")
-    print(f"[heap_exhaust] Injected: heap metadata perturbation at 0x{heap_base:08X}")
+    print(f"[heap_exhaust] Heap header: {resp.strip()}")
+    # Pause VM to stress memory management
+    print("[heap_exhaust] Pausing VM for 3s to stress heap management...")
+    send_cmd(s, "stop")
+    time.sleep(3.0)
+    send_cmd(s, "cont")
+    print("[heap_exhaust] WARNING: Actual heap corruption requires GDB stub (-gdb tcp::1234)")
+    print("[heap_exhaust] Injected: 3s VM pause (simulates memory pressure)")
 
 
 def fault_timer_starvation(s: socket.socket) -> None:
@@ -159,51 +154,47 @@ def fault_timer_starvation(s: socket.socket) -> None:
     print("[timer_starvation] Injected: 500ms execution pause")
 
 
-def fault_corrupt_frame(s: socket.socket) -> None:
-    """Write bad magic bytes to CSI frame buffer area.
+def fault_corrupt_frame(s: socket.socket, flash_path: str = None) -> None:
+    """Simulate CSI frame corruption by pausing VM during frame processing.
 
-    Mock CSI frames use a magic prefix (0xCSIF or similar). We write
-    an invalid magic to the frame staging buffer so the parser
-    encounters corruption on the next read.
+    Actual memory writes to the frame buffer require a GDB stub
+    (-gdb tcp::1234). This function probes the frame buffer region
+    and pauses the VM mid-frame to simulate corruption effects.
     """
-    # Mock CSI buffer is typically in .bss — use a known SRAM region
-    # ESP32-S3 SRAM1: 0x3FC88000 - 0x3FCF0000
-    # Pick an offset likely to hit the frame staging area
     frame_buf_addr = 0x3FCA0000
-    print(f"[corrupt_frame] Writing bad magic to 0x{frame_buf_addr:08X}...")
-
-    # Write 0xDEADCAFE where the frame magic should be 0x43534946 ("CSIF")
-    # QEMU monitor: attempt memory write
+    print(f"[corrupt_frame] Probing frame buffer at 0x{frame_buf_addr:08X}...")
     resp = send_cmd(s, f"xp /4xb 0x{frame_buf_addr:08x}")
-    print(f"[corrupt_frame] Before: {resp.strip()}")
+    print(f"[corrupt_frame] Frame buffer: {resp.strip()}")
+    # Pause VM briefly to disrupt frame processing timing
+    print("[corrupt_frame] Pausing VM for 1s to disrupt frame processing...")
+    send_cmd(s, "stop")
+    time.sleep(1.0)
+    send_cmd(s, "cont")
+    print("[corrupt_frame] WARNING: Actual frame corruption requires GDB stub (-gdb tcp::1234)")
+    print(f"[corrupt_frame] Injected: 1s VM pause during frame processing")
 
-    # Use GDB-style memory write if available, otherwise log the attempt
-    # The actual write depends on QEMU version and GDB stub availability
-    resp = send_cmd(s, f"x /1xw 0x{frame_buf_addr:08x}")
-    print(f"[corrupt_frame] Injected: bad magic bytes at 0x{frame_buf_addr:08X}")
 
+def fault_nvs_corrupt(s: socket.socket, flash_path: str = None) -> None:
+    """Write garbage to the NVS flash region on disk.
 
-def fault_nvs_corrupt(s: socket.socket) -> None:
-    """Write garbage to the NVS flash region.
-
-    NVS partition is at flash offset 0x9000. Under QEMU, the flash is
-    memory-mapped. We write garbage to the NVS page header to trigger
-    NVS corruption detection on next read.
+    When a flash image path is provided, writes random bytes directly
+    to the NVS partition offset (0x9000) in the flash image file.
+    Without a flash path, falls back to a read-only probe via monitor.
     """
-    # ESP32-S3 flash is mapped at 0x3C000000 (instruction) / 0x3D000000 (data)
-    # NVS at flash offset 0x9000 maps to 0x3C009000 in QEMU memory
-    nvs_flash_addr = 0x3C009000
-    print(f"[nvs_corrupt] Writing garbage to NVS region 0x{nvs_flash_addr:08X}...")
-
-    # Read current NVS header
-    resp = send_cmd(s, f"xp /8xb 0x{nvs_flash_addr:08x}")
-    print(f"[nvs_corrupt] NVS header before: {resp.strip()}")
-
-    # Attempt to corrupt the NVS page header (first 32 bytes)
-    # NVS page magic is 0xFE (active) or 0xFC (full)
-    # Writing 0x00 makes it appear as an uninitialized page
-    resp = send_cmd(s, f"x /1xw 0x{nvs_flash_addr:08x}")
-    print(f"[nvs_corrupt] Injected: NVS region corruption at 0x{nvs_flash_addr:08X}")
+    if flash_path and os.path.isfile(flash_path):
+        nvs_offset = 0x9000
+        garbage = bytes(random.randint(0, 255) for _ in range(16))
+        with open(flash_path, "r+b") as f:
+            f.seek(nvs_offset)
+            f.write(garbage)
+        print(f"[nvs_corrupt] Wrote 16 garbage bytes at flash offset 0x{nvs_offset:X}")
+        print(f"[nvs_corrupt] Flash image: {flash_path}")
+    else:
+        # Fallback: attempt via monitor (read-only probe)
+        resp = send_cmd(s, f"xp /8xb 0x3C009000")
+        print(f"[nvs_corrupt] NVS region (read-only probe): {resp.strip()}")
+        print(f"[nvs_corrupt] WARNING: No --flash path provided; NVS corruption was NOT injected")
+        print(f"[nvs_corrupt] Pass --flash /path/to/flash.bin for actual corruption")
 
 
 # Map fault names to injection functions
@@ -235,6 +226,10 @@ def main():
         "--timeout", type=float, default=CMD_TIMEOUT,
         help=f"Per-command timeout in seconds (default: {CMD_TIMEOUT})",
     )
+    parser.add_argument(
+        "--flash", default=None,
+        help="Path to flash image (for nvs_corrupt direct file writes)",
+    )
     args = parser.parse_args()
 
     print(f"[inject_fault] Connecting to {args.socket}...")
@@ -242,7 +237,14 @@ def main():
 
     print(f"[inject_fault] Injecting fault: {args.fault}")
     try:
-        FAULT_MAP[args.fault](s)
+        fault_fn = FAULT_MAP[args.fault]
+        # Pass flash_path to faults that accept it
+        import inspect
+        sig = inspect.signature(fault_fn)
+        if "flash_path" in sig.parameters:
+            fault_fn(s, flash_path=args.flash)
+        else:
+            fault_fn(s)
     except Exception as e:
         print(f"ERROR: Fault injection failed: {e}", file=sys.stderr)
         s.close()

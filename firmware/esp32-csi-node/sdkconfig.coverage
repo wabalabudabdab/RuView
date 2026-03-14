@@ -41,6 +41,13 @@ CONFIG_CSI_MOCK_SCENARIO_DURATION_MS=5000
 CONFIG_CSI_MOCK_LOG_FRAMES=y
 
 # ---------------------------------------------------------------------------
+# FreeRTOS and watchdog: match sdkconfig.qemu for QEMU timing tolerance
+# ---------------------------------------------------------------------------
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=4096
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+CONFIG_ESP_INT_WDT_TIMEOUT_MS=800
+
+# ---------------------------------------------------------------------------
 # Logging and display
 # ---------------------------------------------------------------------------
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y

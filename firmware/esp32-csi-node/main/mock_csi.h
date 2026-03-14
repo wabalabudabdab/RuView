@@ -70,7 +70,7 @@ typedef struct {
     float    person2_speed;    /**< Second person movement speed. */
     uint8_t  channel_idx;       /**< Index into channel sweep table. */
     int8_t   rssi_sweep;        /**< Current RSSI for boundary sweep. */
-    uint32_t scenario_start_ms; /**< Timestamp when current scenario started. */
+    int64_t  scenario_start_ms; /**< Timestamp when current scenario started. */
     uint8_t  all_idx;           /**< Current scenario index in SCENARIO_ALL mode. */
 } mock_state_t;
 

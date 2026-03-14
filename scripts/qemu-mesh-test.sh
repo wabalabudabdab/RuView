@@ -11,7 +11,8 @@
 #
 # Environment variables:
 #   QEMU_PATH       - Path to qemu-system-xtensa (default: qemu-system-xtensa)
-#   MESH_TIMEOUT    - Timeout in seconds (default: 45)
+#   QEMU_TIMEOUT    - Timeout in seconds (default: 45)
+#   MESH_TIMEOUT    - Deprecated alias for QEMU_TIMEOUT
 #   SKIP_BUILD      - Set to "1" to skip the idf.py build step
 #   BRIDGE_NAME     - Bridge interface name (default: qemu-br0)
 #   BRIDGE_SUBNET   - Bridge IP/mask (default: 10.0.0.1/24)
@@ -391,7 +392,7 @@ VALIDATE_ARGS=("--nodes" "$N_NODES")
 
 # Pass results file if it was produced
 if [ -f "$RESULTS_FILE" ]; then
-    VALIDATE_ARGS+=("$RESULTS_FILE")
+    VALIDATE_ARGS+=("--results" "$RESULTS_FILE")
 else
     echo "WARNING: Aggregator results file not found: $RESULTS_FILE"
     echo "Validation will rely on node logs only."

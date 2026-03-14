@@ -45,14 +45,5 @@
                 }
             ]
         }
-    ],
-    "compounds": [
-        {
-            "name": "QEMU: Launch + Debug",
-            "configurations": [
-                "QEMU ESP32-S3 Debug",
-                "QEMU ESP32-S3 Debug (attach)"
-            ]
-        }
     ]
 }

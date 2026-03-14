@@ -237,7 +237,7 @@ This model exercises:
 | 5 | Channel sweep | 5s | Frames on channels 1, 6, 11 in sequence |
 | 6 | MAC filter test | 5s | Frames with wrong MAC are dropped (counter check) |
 | 7 | Ring buffer overflow | 3s | 1000 frames in 100ms burst, graceful drop |
-| 8 | Boundary RSSI | 5s | RSSI sweeps -127 to 0, no crash |
+| 8 | Boundary RSSI | 5s | RSSI sweeps -90 to -10 dBm, no crash |
 | 9 | Zero-length frame | 2s | `iq_len=0` frames, serialize returns 0 |
 
 ---

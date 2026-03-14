@@ -3,8 +3,9 @@
 QEMU ESP32-S3 UART Output Validator (ADR-061)
 
 Parses the UART log captured from a QEMU firmware run and validates
-14 checks covering boot, NVS, mock CSI, edge processing, vitals,
-presence/fall detection, serialization, and crash indicators.
+16 checks covering boot, NVS, mock CSI, edge processing, vitals,
+presence/fall detection, serialization, crash indicators, scenario
+completion, and frame rate sanity.
 
 Usage:
     python3 validate_qemu_output.py <log_file>
@@ -120,7 +121,7 @@ class ValidationReport:
 
 
 def validate_log(log_text: str) -> ValidationReport:
-    """Run all 14 validation checks against the UART log text."""
+    """Run all 16 validation checks against the UART log text."""
     report = ValidationReport()
     lines = log_text.splitlines()
     log_lower = log_text.lower()

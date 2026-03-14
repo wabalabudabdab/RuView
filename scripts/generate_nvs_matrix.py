@@ -331,7 +331,7 @@ def generate_nvs_binary(csv_content: str, size: int) -> bytes:
             )
 
     finally:
-        for p in (csv_path, bin_path):
+        for p in set((csv_path, bin_path)):  # deduplicate in case paths are identical
             if os.path.isfile(p):
                 os.unlink(p)
 

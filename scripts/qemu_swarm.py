@@ -502,9 +502,13 @@ def start_aggregator(
     port: int, n_nodes: int, output_file: Path, log_file: Path
 ) -> Optional[subprocess.Popen]:
     """Start the Rust aggregator binary. Returns Popen or None on failure."""
+    import shutil
     cargo_toml = RUST_DIR / "Cargo.toml"
     if not cargo_toml.exists():
         warn(f"Rust workspace not found at {RUST_DIR}; skipping aggregator.")
+        return None
+    if shutil.which("cargo") is None:
+        warn("cargo not found; skipping aggregator (Rust not installed).")
         return None
 
     args = [

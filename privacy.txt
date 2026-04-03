@@ -1,0 +1,6 @@
+Privacy Policy
+
+This application accesses WHOOP health data for personal use only.
+Data is used solely to generate personal health summaries for the account owner.
+No data is shared with third parties.
+No data is stored permanently beyond what is needed for summary generation.
